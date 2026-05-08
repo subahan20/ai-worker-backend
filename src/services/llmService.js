@@ -1,6 +1,8 @@
+const Groq = require("groq-sdk");
 const logger = require("../utils/logger");
 
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const getGroq = () => new Groq({ apiKey: process.env.GROQ_API_KEY || process.env.GROQ_API || "" });
+
 const ALLOWED_AGENTS = [
   "HR_AGENT",
   "SALES_AGENT",
@@ -10,35 +12,21 @@ const ALLOWED_AGENTS = [
   "OPERATIONS_AGENT"
 ];
 
-let client = null;
-
-function getClient() {
-  if (client) return client;
-  if (!process.env.OPENAI_API_KEY) return null;
-  try {
-    // Lazy import prevents app crash when package is not installed.
-    const OpenAI = require("openai");
-    client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    return client;
-  } catch (err) {
-    logger.error("LLM", "openai_module_not_found_using_fallback", { error: err.message });
-    return null;
-  }
-}
-
-const canUseLlm = () => Boolean(getClient());
+const canUseLlm = () => Boolean(process.env.GROQ_API_KEY || process.env.GROQ_API);
 
 async function jsonCompletion(system, user) {
-  if (!canUseLlm()) throw new Error("OPENAI_API_KEY is missing");
-  const response = await getClient().responses.create({
-    model: MODEL,
-    input: [
-      { role: "system", content: [{ type: "input_text", text: system }] },
-      { role: "user", content: [{ type: "input_text", text: user }] }
+  if (!canUseLlm()) throw new Error("GROQ_API_KEY is missing");
+  
+  const response = await getGroq().chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      { role: "system", content: system + " Respond in valid JSON format." },
+      { role: "user", content: user }
     ],
-    text: { format: { type: "json_object" } }
+    response_format: { type: "json_object" }
   });
-  return JSON.parse(response.output_text || "{}");
+  
+  return JSON.parse(response.choices[0].message.content || "{}");
 }
 
 async function decideAgentWithLlm(task, fallbackAgent) {
